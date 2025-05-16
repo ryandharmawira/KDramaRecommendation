@@ -53,6 +53,22 @@ kdramas.info()
 
 Dataset memiliki 350 data dan 7 atribut. Dari ketujuh atribut tersebut, terdapat 3 numerik dan 4 text.
 
+**Pengecekan Missing Values**
+```
+print(kdramas.isnull().sum())
+```
+![Screenshot 2025-05-16 094639](https://github.com/user-attachments/assets/443573c0-8460-44ca-8af2-699328623e47)
+
+Tidak ada missing values pada dataset.
+
+**Pengecekan Data Duplikat**
+```
+print(f"Jumlah duplikat: {kdramas.duplicated().sum()}")
+```
+![Screenshot 2025-05-16 094749](https://github.com/user-attachments/assets/5df1ba70-86a4-4c82-9ccc-4294c0cc2ecf)
+
+Tidak ada data duplikat pada dataset.
+
 **Visualisasi Distribusi Rating K-Drama**
 
 ![Screenshot 2025-05-08 083526](https://github.com/user-attachments/assets/d43d8542-75c4-4be5-906a-24b16dbda617)
@@ -101,29 +117,82 @@ Dari hasil eksekusi kode tersebut, dapat terlihat bahwa tidak adanya data duplik
 ### Standarisasi Atribut Genre
 Pada dataset, Genre berisi nilai dalam bentuk string yang mencantumkan beberapa genre film, misalnya "Action, Comedy, Drama". Untuk memudahkan analisis dan pemrosesan data, pada proyek ini dilakukan standarisasi Genre agar nilai dalam kolom tersebut berada dalam format yang lebih konsisten dan mudah dikelola, seperti list yang berisi genre-genre dalam huruf kecil.
 ```
-df.loc[:, 'GenreList'] = df.loc[:, 'Genre'].apply(lambda x: [genre.strip().lower() for genre in x.split(',')])
+df['GenreList'] = df['Genre'].apply(lambda x: [genre.strip().lower() for genre in x.split(',')])
 ```
 ![Screenshot 2025-05-13 101716](https://github.com/user-attachments/assets/de46d243-cbfa-4d96-86ce-b2760e9cf4f1)
-
 
 ### Normalisasi Atribut Rating
 Dalam proyek ini, atribut numerik Rating dalam dataset perlu dinormalisasi atau diskalakan agar berada dalam rentang tertentu. Selain untuk memudahkan analisis dan pemrosesan data, tahap ini juga tidak kalah penting untuk pembangunan model yang sensitif terhadap skala data. Misalkan dataset memiliki Rating yang berupa angka desimal, seperti 9.2, 9.1, 9.0, dan seterusnya. Nilai-nilai ini perlu dinormalisasi agar berada dalam rentang yang seragam, seperti [0 - 1].
 ```
 scaler = MinMaxScaler()
-df.loc[:, 'RatingNorm'] = scaler.fit_transform(df[['Rating']])
+df['RatingNorm'] = scaler.fit_transform(df[['Rating']])
 ```
 ![Screenshot 2025-05-13 103535](https://github.com/user-attachments/assets/a7a518d4-3e22-462d-9ff3-8f88583e5a84)
+
+### TF-IDF pada Genre
+
+Pada tahap ini, data teks yang terdapat pada kolom Genre diubah menjadi representasi numerik dengan menggunakan metode TF-IDF (Term Frequency–Inverse Document Frequency). Proses ini dilakukan untuk memberikan bobot pada setiap kata (Genre) berdasarkan frekuensinya dalam konteks seluruh data. Langkah-langkah yang dilakukan adalah sebagai berikut:
+
+1. Melatih TF-IDF untuk mengenali kata unik pada Genre lalu menampilkan daftar kata yang dihasilkan TF-IDF dari teks.
+   ```
+   tfidf.fit(df['Genre'])
+   tfidf.get_feature_names_out()
+   ```
+   ![Screenshot 2025-05-16 101534](https://github.com/user-attachments/assets/c6c3109e-1784-47d7-a13a-8757515d4c61)
+
+2. Melatih TF-IDF dan langsung mengubah teks pada Genre menjadi matriks vektor numerik lalu menampilkan ukuran matriks hasil transformasi.
+   ```
+   tfidf_matrix = tfidf.fit_transform(df['Genre'])
+   tfidf_matrix.shape
+   ```
+   ![Screenshot 2025-05-16 101727](https://github.com/user-attachments/assets/46aea5de-4696-4f1f-bbf5-475725361d77)
+
+3. Mengubah vektor TF-IDF dalam bentuk matriks dengan fungsi todense()
+   ```
+   tfidf_matrix.todense()
+   ```
+   ![Screenshot 2025-05-16 101851](https://github.com/user-attachments/assets/30a6d929-0cc2-4b36-ace5-66ffe3c490f2)
+
+4. Membuat dataframe untuk melihat TF-IDF matrix, kolom diisi dengan Genre, baris diisi dengan judul K-Drama
+   ```
+   pd.DataFrame(
+    tfidf_matrix.todense(), 
+    columns=tfidf.get_feature_names_out(),
+    index=df.Title
+   ).sample(22, axis=1).sample(10, axis=0)
+   ```
+   ![Screenshot 2025-05-16 101948](https://github.com/user-attachments/assets/176f107b-0232-48cd-8808-48c03736cb88)
+
+### Genre Embedding dengan Pembobotan Rating
+
+Pada tahap ini, GenreList yang berisi daftar genre untuk setiap entri dikonversi menjadi representasi numerik dengan menggunakan pendekatan multi-label one-hot encoding. Kemudian, representasi tersebut diberi bobot berdasarkan skor RatingNorm untuk memperkuat kontribusi Genre yang berkaitan dengan kualitas. Langkah-langkah yang dilakukan adalah sebagai berikut:
+
+1. Encode Genre, lalu dikalikan dengan RatingNorm untuk memberi bobot pada Genre.
+   ```
+   genre_encoded = mlb.fit_transform(df['GenreList'])
+   genre_weighted = genre_encoded * df['RatingNorm'].values.reshape(-1, 1)
+   ```
+   
+2. Menampilkan DataFrame 10 data acak hasil Genre yang dibobot berdasarkan RatingNorm.
+   ```
+   pd.DataFrame(
+    genre_weighted,
+    columns=mlb.classes_,
+    index=df['Title'] if 'Title' in df.columns else None
+   ).sample(10)
+   ```
+   ![Screenshot 2025-05-16 102654](https://github.com/user-attachments/assets/b3c0183f-ded3-4827-859e-7fe08cbf10fc)
 
 
 ## Modeling
 
-### TF-IDF pada Genre
+### Model TF-IDF pada Genre
 
-Metode ini menggunakan TF-IDF Vectorization terhadap fitur Genre K-Drama. Setiap K-Drama diubah menjadi representasi vektor berdasarkan Genre-nya. Kemudian, digunakan cosine similarity untuk mengukur kemiripan antar K-Drama. Adapun tahapan yang dilakukan sebagai berikut:
-1. Melakukan vectorization dengan TfidfVectorizer.
-2. Menghitung similarity antar K-Drama menggunakan cosine_similarity.
-3. Mengambil Top-N K-Drama paling mirip sebagai rekomendasi.
+Sebelumnya pada Data Preparation telah disiapkan TF-IDF matriks pada fitur Genre. Berdasarkan matriks tersebut, digunakan cosine similarity untuk mengukur kemiripan antar K-Drama. Adapun tahapan yang dilakukan sebagai berikut:
+1. Menghitung similarity antar K-Drama menggunakan cosine_similarity.
+2. Mengambil Top-N K-Drama paling mirip sebagai rekomendasi.
 
+Hasil rekomendasi dari sistem dapat dilihat sebagai berikut.
 ```
 # Mengambil salah satu Title acak dari dataframe
 kdrama_title = df['Title'].sample(1).iloc[0]
@@ -131,26 +200,23 @@ print("Title:", kdrama_title)
 print("GenreList:", df[df['Title'] == kdrama_title]['GenreList'].values[0])
 recommend_kdrama_tfidf(kdrama_title)
 ```
-
-![Screenshot 2025-05-13 112541](https://github.com/user-attachments/assets/c93eadf4-5007-4e34-a257-03def687ad4e)
+![Screenshot 2025-05-16 095600](https://github.com/user-attachments/assets/14d17cd0-61bb-4d95-ab59-13cabe066617)
 
 Metode ini memiliki beberapa kelebihan antara lain data interaksi pengguna tidak diperlukan dan hasil rekomendasi dapat dijelaskan dengan fitur konten (Genre). Di sisi lain juga terdapat beberapa kekurangan yaitu terbatas pada informasi yang ada dalam K-Drama itu sendiri yang berarti terdapat masalah cold-start untuk K-Drama baru dengan Genre unik.
 
-### Genre Embedding dengan Pembobotan Rating
+### Model Genre Embedding dengan Pembobotan Rating
 
-Metode ini menggunakan pendekatan serupa dengan metode yang sebelumnya, namun dengan pembobotan berdasarkan Rating. Genre diubah menjadi representasi biner/embedding, kemudian dilakukan pembobotan berdasarkan rating, agar Genre dari K-Drama dengan Rating tinggi mendapatkan bobot lebih besar dalam menentukan kemiripan. Adapun tahapan yang dilakukan sebagai berikut:
-1. Mengubah fitur Genre ke dalam bentuk multi-hot encoding.
-2. Melakukan pembobotan berdasarkan rating.
-3. Menghitung cosine similarity antar vektor yang telah dibobot.
-4. Menghasilkan rekomendasi berdasarkan skor kemiripan tertinggi.
+Metode ini menggunakan pendekatan serupa dengan metode yang sebelumnya, namun dengan pembobotan berdasarkan Rating. Pada Data Preparation, Genre diubah menjadi representasi biner/embedding, kemudian dilakukan pembobotan berdasarkan Rating, agar Genre dari K-Drama dengan Rating tinggi mendapatkan bobot lebih besar dalam menentukan kemiripan. Adapun tahapan yang dilakukan sebagai berikut:
+1. Menghitung cosine similarity antar vektor yang telah dibobot.
+2. Menghasilkan rekomendasi berdasarkan skor kemiripan tertinggi.
 
+Hasil rekomendasi dari sistem dapat dilihat sebagai berikut.
 ```
 print("Title:", kdrama_title)
 print("GenreList:", df[df['Title'] == kdrama_title]['GenreList'].values[0])
 recommend_kdrama_weighted(kdrama_title)
 ```
-
-![Screenshot 2025-05-13 113200](https://github.com/user-attachments/assets/0b0ea23d-35a8-48e6-b00d-da1fc0410a71)
+![Screenshot 2025-05-16 095613](https://github.com/user-attachments/assets/5ed3a93e-0f3f-4f5c-8df6-ce9f7f80eefd)
 
 Metode ini memiliki beberapa kelebihan antara lain memperhitungkan preferensi implisit dari Rating dan memberikan bobot lebih pada K-Drama yang disukai. Di sisi lain juga terdapat kekurangan yaitu berkemungkinan bias terhadap K-Drama dengan Rating tinggi tetapi kontennya kurang relevan secara keseluruhan.
 
